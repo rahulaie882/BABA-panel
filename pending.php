@@ -2,24 +2,21 @@
 define('BABA_PANEL', true);
 require_once 'config.php';
 if (!isset($_SESSION['admin_logged'])) { header("Location: index.php"); exit; }
+$success = '';
 
-$admin_id = $_SESSION['admin_id'];
-if (isset($_GET['approve'])) {
-    $id = intval($_GET['approve']);
-    $pdo->prepare("UPDATE pending_payments SET status = 'approved' WHERE id = ? AND admin_id = ?")->execute([$id, $admin_id]);
-    header("Location: pending.php");
-    exit;
-}
-if (isset($_GET['reject'])) {
-    $id = intval($_GET['reject']);
-    $pdo->prepare("UPDATE pending_payments SET status = 'rejected' WHERE id = ? AND admin_id = ?")->execute([$id, $admin_id]);
-    header("Location: pending.php");
-    exit;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_payment'])) {
+    $pay_id = intval($_POST['payment_id']);
+    $action = $_POST['action_type'];
+    if ($action == 'approve') {
+        $pdo->prepare("UPDATE pending_payments SET status = 'approved' WHERE id = ?")->execute([$pay_id]);
+        $success = "Payment approved successfully!";
+    } else {
+        $pdo->prepare("UPDATE pending_payments SET status = 'rejected' WHERE id = ?")->execute([$pay_id]);
+        $success = "Payment rejected!";
+    }
 }
 
-$stmt = $pdo->prepare("SELECT * FROM pending_payments WHERE admin_id = ? AND status = 'pending' ORDER BY id DESC");
-$stmt->execute([$admin_id]);
-$pendings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$pending_list = $pdo->query("SELECT * FROM pending_payments WHERE status = 'pending' ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -27,29 +24,44 @@ $pendings = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pending Payments - BABA PANEL</title>
     <style>
-        body { background-color: #0b0c10; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; }
-        .back { color: #6366f1; text-decoration: none; display: inline-block; margin-bottom: 15px; }
-        .card { background: #161922; border: 1px solid #212533; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
-        .btn { padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: bold; }
-        .btn-approve { background: #10b981; color: #fff; }
-        .btn-reject { background: #ef4444; color: #fff; margin-left: 5px; }
+        * { box-sizing: border-box; }
+        body { background-color: #0b0c10; color: #fff; font-family: sans-serif; margin: 0; padding: 0; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #12141d; padding: 15px 20px; border-bottom: 1px solid #1f2330; }
+        .container { padding: 20px; max-width: 600px; margin: 0 auto; }
+        .card { background: #161922; border: 1px solid #212533; border-radius: 14px; padding: 20px; margin-bottom: 20px; }
+        button { padding: 10px; border: none; color: #fff; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; }
+        .alert-success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; padding: 10px; border-radius: 8px; margin-bottom: 15px; text-align: center; font-size: 13px; }
+        .item-box { background: #0f1117; border: 1px solid #212533; padding: 15px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
+        .back-link { display: inline-block; color: #6366f1; text-decoration: none; margin-bottom: 15px; font-size: 14px; }
     </style>
 </head>
 <body>
-    <a href="index.php" class="back">← Back to Dashboard</a>
-    <h2>⏳ Pending Payments</h2>
-    <?php if(empty($pendings)): ?><p style="color: #6b7280;">No pending payments found.</p><?php endif; ?>
-    <?php foreach($pendings as $p): ?>
-    <div class="card">
-        <div>
-            <strong>User ID: <?= htmlspecialchars($p['user_id']) ?></strong><br>
-            <span style="color: #10b981; font-weight: bold;">₹<?= $p['amount'] ?></span>
-        </div>
-        <div>
-            <a href="?approve=<?= $p['id'] ?>" class="btn btn-approve">Approve</a>
-            <a href="?reject=<?= $p['id'] ?>" class="btn btn-reject">Reject</a>
+    <div class="header"><h1>⏳ Pending Payment Approvals</h1><div>👤 <?= htmlspecialchars($_SESSION['admin_user']) ?></div></div>
+    <div class="container">
+        <a href="dashboard.php" class="back-link">← Back to Dashboard</a>
+        <?php if($success): ?><div class="alert-success"><?= $success ?></div><?php endif; ?>
+        <div class="card">
+            <?php if(empty($pending_list)): ?>
+                <p style="color:#9ca3af; font-size:13px; text-align:center; margin:10px 0;">No pending payments right now.</p>
+            <?php endif; ?>
+            <?php foreach($pending_list as $pay): ?>
+            <div class="item-box">
+                <div style="margin-bottom:8px;">User ID: <code><?= htmlspecialchars($pay['user_id']) ?></code> | Amount: <strong>₹<?= $pay['amount'] ?></strong></div>
+                <div style="display:flex; gap:10px;">
+                    <form method="POST" style="flex:1; margin:0;">
+                        <input type="hidden" name="payment_id" value="<?= $pay['id'] ?>">
+                        <input type="hidden" name="action_type" value="approve">
+                        <button type="submit" name="action_payment" style="background:#10b981;">Approve</button>
+                    </form>
+                    <form method="POST" style="flex:1; margin:0;">
+                        <input type="hidden" name="payment_id" value="<?= $pay['id'] ?>">
+                        <input type="hidden" name="action_type" value="reject">
+                        <button type="submit" name="action_payment" style="background:#ef4444;">Reject</button>
+                    </form>
+                </div>
+            </div>
+            <?php endforeach; ?>
         </div>
     </div>
-    <?php endforeach; ?>
 </body>
 </html>
