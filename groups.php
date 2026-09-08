@@ -1,74 +1,39 @@
 <?php
 define('BABA_PANEL', true);
 require_once 'config.php';
-requireLogin();
-$page_title = 'Group Management';
+if (!isset($_SESSION['admin_logged'])) { header("Location: index.php"); exit; }
+$admin_id = $_SESSION['admin_id'];
 
-// Add Group
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_group'])) {
-    $name = trim($_POST['name'] ?? '');
-    $link = trim($_POST['link'] ?? '');
-    $desc = trim($_POST['description'] ?? '');
-
-    if ($name && $link) {
-        $pdo->prepare("INSERT INTO groups (name, link, description) VALUES (?,?,?)")
-            ->execute([$name, $link, $desc]);
-        $success = "Group added successfully!";
-    }
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $channel = trim($_POST['channel_id']);
+    $pdo->prepare("DELETE FROM settings WHERE admin_id = ? AND key = 'channel_id'")->execute([$admin_id]);
+    $pdo->prepare("INSERT INTO settings (admin_id, key, value) VALUES (?, 'channel_id', ?)")->execute([$admin_id, $channel]);
+    $success = "Channel/Group updated!";
 }
-
-// Delete
-if (isset($_GET['delete'])) {
-    $pdo->prepare("DELETE FROM groups WHERE id = ?")->execute([intval($_GET['delete'])]);
-    header('Location: groups.php');
-    exit;
-}
-
-$groups = $pdo->query("SELECT * FROM groups ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
-
-require_once 'includes/header.php';
+$stmt = $pdo->prepare("SELECT value FROM settings WHERE admin_id = ? AND key = 'channel_id'");
+$stmt->execute([$admin_id]);
+$current_channel = $stmt->fetchColumn() ?: '';
 ?>
-
-<?php if (!empty($success)): ?>
-    <div class="alert alert-success"><?= $success ?></div>
-<?php endif; ?>
-
-<div class="card">
-    <h3 style="margin-bottom:15px;">➕ Add New Group</h3>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Groups/Channels - BABA PANEL</title>
+    <style>
+        body { background-color: #0b0c10; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; }
+        .back { color: #6366f1; text-decoration: none; display: inline-block; margin-bottom: 15px; }
+        input, button { width: 100%; padding: 12px; margin-bottom: 10px; background: #161922; border: 1px solid #212533; color: #fff; border-radius: 8px; }
+        button { background: #6366f1; border: none; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <a href="index.php" class="back">← Back to Dashboard</a>
+    <h2>🔗 Linked Groups / Channels</h2>
+    <?php if(isset($success)): ?><p style="color: #10b981;"><?= $success ?></p><?php endif; ?>
     <form method="POST">
-        <label>Group Name *</label>
-        <input type="text" name="name" placeholder="e.g. Premium Channel" required>
-        
-        <label>Group Link *</label>
-        <input type="text" name="link" placeholder="https://t.me/yourgroup" required>
-        
-        <label>Description</label>
-        <textarea name="description" rows="2" placeholder="Short description about this group..."></textarea>
-        
-        <button type="submit" name="add_group" class="btn btn-primary">+ Add Group</button>
+        <label>Telegram Channel/Group ID</label>
+        <input type="text" name="channel_id" value="<?= htmlspecialchars($current_channel) ?>" placeholder="-100xxxxxxxxxx" required>
+        <button type="submit">Save Channel</button>
     </form>
-</div>
-
-<div class="card">
-    <h3 style="margin-bottom:15px;">🔗 All Groups (<?= count($groups) ?>)</h3>
-    
-    <?php if (empty($groups)): ?>
-        <p style="color:#64748b;">No groups added yet.</p>
-    <?php else: ?>
-        <?php foreach ($groups as $g): ?>
-        <div style="background:#0f0f17;border:1px solid #1e1e2d;border-radius:12px;padding:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-            <div>
-                <div style="font-weight:600;margin-bottom:4px;"><?= htmlspecialchars($g['name']) ?></div>
-                <div style="font-size:13px;color:#60a5fa;"><?= htmlspecialchars($g['link']) ?></div>
-                <div style="font-size:12px;color:#64748b;margin-top:4px;"><?= htmlspecialchars($g['description']) ?></div>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <span class="badge badge-green"><?= $g['status'] ?></span>
-                <a href="?delete=<?= $g['id'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Delete this group?')">Delete</a>
-            </div>
-        </div>
-        <?php endforeach; ?>
-    <?php endif; ?>
-</div>
-
-<?php require_once 'includes/footer.php'; ?>
+</body>
+</html>
