@@ -17,17 +17,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     $admin = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($admin && password_verify($pass, $admin['password'])) {
-        $_SESSION['admin_logged'] = true;
-        $_SESSION['admin_id'] = $admin['id'];
-        $_SESSION['admin_user'] = $admin['username'];
-        header("Location: index.php");
-        exit;
+        // Successful login response for animation trigger
+        $login_success = true;
     } else {
         $login_error = "Invalid Username or Password!";
     }
 }
 
-if (!isset($_SESSION['admin_logged'])) {
+if (!isset($_SESSION['admin_logged']) && empty($login_success)) {
     ?>
     <!DOCTYPE html>
     <html lang="en">
@@ -35,31 +32,110 @@ if (!isset($_SESSION['admin_logged'])) {
         <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Login - BABA PANEL</title>
         <style>
-            body { background: #0b0c10; color: #fff; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-            .login-card { background: #161922; border: 1px solid #212533; padding: 30px; border-radius: 14px; width: 320px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-            h2 { margin-top: 0; font-size: 20px; text-align: center; color: #6366f1; }
-            label { font-size: 13px; color: #9ca3af; display: block; margin-bottom: 5px; }
-            input { width: 100%; padding: 12px; background: #0f1117; border: 1px solid #212533; color: #fff; border-radius: 8px; margin-bottom: 15px; outline: none; }
-            input:focus { border-color: #6366f1; }
-            button { width: 100%; padding: 12px; background: #6366f1; border: none; color: #fff; border-radius: 8px; font-weight: bold; cursor: pointer; }
-            .err { color: #ef4444; font-size: 12px; text-align: center; margin-bottom: 10px; }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { background: #07080c; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; position: relative; }
+            
+            /* Background Glow Effects */
+            body::before { content: ''; position: absolute; width: 400px; height: 400px; background: rgba(99, 102, 241, 0.15); filter: blur(120px); top: -100px; left: -100px; z-index: -1; }
+            body::after { content: ''; position: absolute; width: 400px; height: 400px; background: rgba(168, 85, 247, 0.15); filter: blur(120px); bottom: -100px; right: -100px; z-index: -1; }
+
+            .login-container { background: rgba(18, 20, 29, 0.75); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); padding: 35px 30px; border-radius: 24px; width: 100%; max-width: 380px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); text-align: center; }
+            
+            .crown-icon { font-size: 38px; margin-bottom: 5px; filter: drop-shadow(0 0 10px rgba(234, 179, 8, 0.4)); }
+            h1 { font-size: 22px; font-weight: 800; letter-spacing: 0.5px; background: linear-gradient(45deg, #6366f1, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 4px; }
+            .subtitle { font-size: 11px; color: #9ca3af; margin-bottom: 25px; letter-spacing: 0.3px; }
+
+            .input-group { position: relative; margin-bottom: 16px; text-align: left; }
+            .input-group span { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 16px; color: #6b7280; }
+            .input-field { width: 100%; padding: 13px 15px 13px 42px; background: rgba(15, 17, 23, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); color: #fff; border-radius: 12px; font-size: 13.5px; outline: none; transition: all 0.3s; }
+            .input-field:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+            
+            .toggle-pass { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #6b7280; cursor: pointer; font-size: 14px; }
+
+            .login-btn { width: 100%; padding: 13px; background: linear-gradient(135deg, #6366f1, #4f46e5); border: none; color: #fff; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.3s; margin-top: 5px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4); }
+            .login-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+            .features-tag { display: flex; justify-content: center; gap: 15px; font-size: 10.5px; color: #6b7280; margin: 20px 0 15px 0; text-transform: uppercase; letter-spacing: 1px; }
+
+            /* Shield Lock Animation Box */
+            .shield-box { width: 60px; height: 60px; background: linear-gradient(135deg, #1e1b4b, #312e81); border: 1px solid #4338ca; border-radius: 16px; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); transition: all 0.5s ease; }
+            
+            /* Unlocked Animation State */
+            .shield-box.unlocked { background: linear-gradient(135deg, #065f46, #047857); border-color: #10b981; box-shadow: 0 0 25px rgba(16, 185, 129, 0.6); transform: scale(1.1); }
+
+            .err { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; font-size: 12px; padding: 8px; border-radius: 8px; margin-bottom: 15px; text-align: center; }
         </style>
     </head>
     <body>
-        <div class="login-card">
-            <h2>👑 BABA PANEL</h2>
+        <div class="login-container">
+            <div class="crown-icon">👑</div>
+            <h1>BABA PANEL</h1>
+            <div class="subtitle">Your Trusted Panel, Always Online</div>
+
             <?php if(isset($login_error)): ?><div class="err"><?= $login_error ?></div><?php endif; ?>
-            <form method="POST">
-                <label>Username</label>
-                <input type="text" name="username" required>
-                <label>Password</label>
-                <input type="password" name="password" required>
-                <button type="submit" name="login">Login</button>
+
+            <form method="POST" id="loginForm" onsubmit="triggerUnlock(event)">
+                <div class="input-group">
+                    <span>👤</span>
+                    <input type="text" name="username" class="input-field" placeholder="Username" required autocomplete="off">
+                </div>
+                
+                <div class="input-group">
+                    <span>🔒</span>
+                    <input type="password" name="password" id="passwordBox" class="input-field" placeholder="Password" required>
+                    <button type="button" class="toggle-pass" onclick="togglePassword()">👁️</button>
+                </div>
+
+                <button type="submit" name="login" class="login-btn" id="loginBtn">🔓 Login</button>
             </form>
+
+            <div class="features-tag">
+                <span>Secure</span> • <span>Fast</span> • <span>Reliable</span>
+            </div>
+
+            <div class="shield-box" id="shieldIcon">
+                🔒
+            </div>
         </div>
+
+        <script>
+            function togglePassword() {
+                const passBox = document.getElementById('passwordBox');
+                if (passBox.type === 'password') {
+                    passBox.type = 'text';
+                } else {
+                    passBox.type = 'password';
+                }
+            }
+
+            function triggerUnlock(event) {
+                event.preventDefault(); // Temporarily stop form for animation
+                const shield = document.getElementById('shieldIcon');
+                const btn = document.getElementById('loginBtn');
+                
+                // Trigger Lock Animation
+                shield.innerHTML = '🔓';
+                shield.classList.add('unlocked');
+                btn.innerHTML = '✨ Success, Opening...';
+                
+                // Submit form after animation completes (0.6 seconds)
+                setTimeout(() => {
+                    document.getElementById('loginForm').submit();
+                }, 600);
+            }
+        </script>
     </body>
     </html>
     <?php
+    exit;
+}
+
+// If successfully logged in, set session and reload to dashboard
+if (isset($login_success) && $login_success) {
+    $_SESSION['admin_logged'] = true;
+    $_SESSION['admin_id'] = $admin['id'];
+    $_SESSION['admin_user'] = $admin['username'];
+    header("Location: index.php");
     exit;
 }
 
