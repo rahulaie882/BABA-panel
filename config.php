@@ -1,88 +1,56 @@
 <?php
-// ==========================================
-// FILE: config.php
-// ==========================================
-define('BABA_PANEL', true);
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+if (!defined('BABA_PANEL')) {
+    exit('Direct access not permitted');
 }
 
+$db_file = __DIR__ . '/database.sqlite';
 try {
-    $db_file = __DIR__ . '/database.sqlite';
-    $pdo = new PDO("sqlite:" . $db_file);
+    $pdo = new PDO('sqlite:' . $db_file);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // Admins / Multi-Tenant Table
+    // Create tables if not exist
     $pdo->exec("CREATE TABLE IF NOT EXISTS admins (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE,
-        password TEXT,
-        bot_token TEXT,
-        upi_id TEXT,
-        user_log_channel TEXT,
-        proof_channel TEXT,
-        group_link TEXT,
-        start_videos TEXT,
-        start_caption TEXT,
-        how_to_video TEXT,
-        how_to_caption TEXT,
+        password TEXT
+    )");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS pending_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_id INTEGER,
+        user_id TEXT,
+        amount REAL,
+        status TEXT DEFAULT 'pending',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Plans Table
     $pdo->exec("CREATE TABLE IF NOT EXISTS plans (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         admin_id INTEGER,
         name TEXT,
         price REAL,
-        validity INTEGER,
-        caption TEXT,
-        video_ids TEXT
+        duration INTEGER
     )");
 
-    // Pending Payments Table
-    $pdo->exec("CREATE TABLE IF NOT EXISTS pending_payments (
+    $pdo->exec("CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         admin_id INTEGER,
-        user_id TEXT,
-        username TEXT,
-        plan_name TEXT,
-        amount REAL,
-        screenshot TEXT,
-        status TEXT DEFAULT 'pending',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        key TEXT,
+        value TEXT
     )");
 
-    // Users State Table
-    $pdo->exec("CREATE TABLE IF NOT EXISTS users_state (
-        user_id TEXT PRIMARY KEY,
-        admin_id INTEGER,
-        state TEXT,
-        selected_plan TEXT
-    )");
-
-    // Default Super Admin creation
+    // Default Admin Create (admin / admin123)
     $stmt = $pdo->query("SELECT COUNT(*) FROM admins");
     if ($stmt->fetchColumn() == 0) {
-        $default_pass = password_hash('admin123', PASSWORD_DEFAULT);
-        $pdo->exec("INSERT INTO admins (username, password, bot_token, upi_id) VALUES ('admin', '$default_pass', '', 'yourupi@ibl')");
+        $hash = password_hash('admin123', PASSWORD_DEFAULT);
+        $pdo->exec("INSERT INTO admins (username, password) VALUES ('admin', '$hash')");
     }
 
 } catch (PDOException $e) {
-    die("Database Error: " . $e->getMessage());
+    die("Database Connection Failed: " . $e->getMessage());
 }
 
-function getAdminSetting($admin_id, $key) {
-    global $pdo;
-    $stmt = $pdo->prepare("SELECT $key FROM admins WHERE id = ?");
-    $stmt->execute([$admin_id]);
-    return $stmt->fetchColumn() ?: '';
-}
-
-function updateAdminSetting($admin_id, $key, $val) {
-    global $pdo;
-    $stmt = $pdo->prepare("UPDATE admins SET $key = ? WHERE id = ?");
-    $stmt->execute([$val, $admin_id]);
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 ?>
