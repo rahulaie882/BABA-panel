@@ -1,5 +1,7 @@
 {
-  "require": {
-    "php": ">=8.0"
-  }
+    "name": "baba/panel",
+    "description": "Telegram Bot & Panel",
+    "require": {
+        "php": ">=8.0"
+    }
 }
