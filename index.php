@@ -76,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
 
         <div class="footer">© 2026 BABA PANEL • <span>Premium Telegram Bot</span></div>
+        <div style="margin-top: 15px; font-size: 11px; color: #64748b;">Default Login: <b>admin</b> / <b>password123</b></div>
     </div>
 </body>
 </html>
