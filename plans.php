@@ -1,93 +1,48 @@
 <?php
 define('BABA_PANEL', true);
 require_once 'config.php';
-requireLogin();
-$page_title = 'Plans / Products';
+if (!isset($_SESSION['admin_logged'])) { header("Location: index.php"); exit; }
+$admin_id = $_SESSION['admin_id'];
 
-// Add Plan
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_plan'])) {
-    $name = trim($_POST['name'] ?? '');
-    $price = floatval($_POST['price'] ?? 0);
-    $validity = intval($_POST['validity'] ?? 30);
-    $caption = trim($_POST['caption'] ?? '');
-    $video_ids = trim($_POST['video_ids'] ?? '');
-
-    if ($name && $price > 0) {
-        $pdo->prepare("INSERT INTO plans (name, price, validity, caption, video_ids) VALUES (?,?,?,?,?)")
-            ->execute([$name, $price, $validity, $caption, $video_ids]);
-        $success = "Product added successfully!";
-    }
-}
-
-// Delete
-if (isset($_GET['delete'])) {
-    $pdo->prepare("DELETE FROM plans WHERE id = ?")->execute([intval($_GET['delete'])]);
-    header('Location: plans.php');
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $name = trim($_POST['name']);
+    $price = floatval($_POST['price']);
+    $duration = intval($_POST['duration']);
+    $pdo->prepare("INSERT INTO plans (admin_id, name, price, duration) VALUES (?, ?, ?, ?)")->execute([$admin_id, $name, $price, $duration]);
+    header("Location: plans.php");
     exit;
 }
-
-$plans = $pdo->query("SELECT * FROM plans ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
-
-require_once 'includes/header.php';
+$plans = $pdo->prepare("SELECT * FROM plans WHERE admin_id = ?");
+$plans->execute([$admin_id]);
+$all_plans = $plans->fetchAll(PDO::FETCH_ASSOC);
 ?>
-
-<?php if (!empty($success)): ?>
-    <div class="alert alert-success"><?= $success ?></div>
-<?php endif; ?>
-
-<div class="card">
-    <h3 style="margin-bottom:15px;">➕ Add Product</h3>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plans - BABA PANEL</title>
+    <style>
+        body { background-color: #0b0c10; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; }
+        .back { color: #6366f1; text-decoration: none; display: inline-block; margin-bottom: 15px; }
+        input, button { width: 100%; padding: 12px; margin-bottom: 10px; background: #161922; border: 1px solid #212533; color: #fff; border-radius: 8px; }
+        button { background: #6366f1; border: none; font-weight: bold; cursor: pointer; }
+        .card { background: #161922; border: 1px solid #212533; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <a href="index.php" class="back">← Back to Dashboard</a>
+    <h2>📦 Manage Plans</h2>
     <form method="POST">
-        <label>Product Name</label>
-        <input type="text" name="name" placeholder="Enter name" required>
-        
-        <label>Price (₹)</label>
-        <input type="number" name="price" placeholder="Enter price" step="0.01" required>
-        
-        <label>Validity (Days)</label>
-        <input type="number" name="validity" value="30" required>
-        
-        <label>Caption / Description</label>
-        <textarea name="caption" rows="2" placeholder="Description"></textarea>
-        
-        <label>Video File IDs (One per line)</label>
-        <textarea name="video_ids" rows="3" placeholder="Enter each video file ID on a new line"></textarea>
-        <small style="color:#64748b;display:block;margin-bottom:12px;">Get file IDs by forwarding videos to bot and typing /getids</small>
-        
-        <button type="submit" name="add_plan" class="btn btn-primary">+ Add Product</button>
+        <input type="text" name="name" placeholder="Plan Name" required>
+        <input type="number" name="price" placeholder="Price (₹)" required>
+        <input type="number" name="duration" placeholder="Duration (Days)" required>
+        <button type="submit">Add Plan</button>
     </form>
-</div>
-
-<div class="card">
-    <h3 style="margin-bottom:15px;">📦 All Products (<?= count($plans) ?>)</h3>
-    <?php if (empty($plans)): ?>
-        <p style="color:#64748b;">No products added yet.</p>
-    <?php else: ?>
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Price</th>
-                    <th>Validity</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($plans as $p): ?>
-                <tr>
-                    <td>#<?= $p['id'] ?></td>
-                    <td><?= htmlspecialchars($p['name']) ?></td>
-                    <td>₹<?= number_format($p['price']) ?></td>
-                    <td><?= $p['validity'] ?> days</td>
-                    <td>
-                        <a href="?delete=<?= $p['id'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Delete this product?')">Delete</a>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php endif; ?>
-</div>
-
-<?php require_once 'includes/footer.php'; ?>
+    <h3>Existing Plans</h3>
+    <?php foreach($all_plans as $plan): ?>
+    <div class="card">
+        <strong><?= htmlspecialchars($plan['name']) ?></strong> - ₹<?= $plan['price'] ?> (<?= $plan['duration'] ?> Days)
+    </div>
+    <?php endforeach; ?>
+</body>
+</html>
