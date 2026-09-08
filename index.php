@@ -65,7 +65,10 @@ if (!isset($_SESSION['admin_logged'])) {
 
 $admin_id = $_SESSION['admin_id'];
 $total_users = $pdo->query("SELECT COUNT(*) FROM bot_users")->fetchColumn();
-$total_plans = $pdo->query("SELECT COUNT(*) FROM plans WHERE admin_id = $admin_id")->fetchColumn();
+$total_plans = $pdo->prepare("SELECT COUNT(*) FROM plans WHERE admin_id = ?");
+$total_plans->execute([$admin_id]);
+$total_plans_count = $total_plans->fetchColumn();
+
 $pending_pay = $pdo->query("SELECT COUNT(*) FROM pending_payments WHERE status = 'pending'")->fetchColumn();
 ?>
 <!DOCTYPE html>
@@ -83,13 +86,17 @@ $pending_pay = $pdo->query("SELECT COUNT(*) FROM pending_payments WHERE status =
         .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; z-index: 999; }
         .sidebar { position: fixed; top: 0; left: -280px; width: 280px; height: 100%; background: #12141d; border-right: 1px solid #1f2330; transition: left 0.3s ease; z-index: 1000; display: flex; flex-direction: column; padding: 20px; }
         .sidebar.open { left: 0; }
-        .sidebar-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 1px solid #1f2330; }
+        .sidebar-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #1f2330; }
         .sidebar-brand h3 { margin: 0; font-size: 16px; }
-        .nav-links { list-style: none; padding: 0; margin: 0; flex-grow: 1; }
-        .nav-links li { margin-bottom: 8px; }
-        .nav-links a { display: flex; align-items: center; gap: 12px; padding: 12px 14px; color: #9ca3af; text-decoration: none; border-radius: 10px; font-size: 14px; transition: 0.2s; }
+        
+        .nav-links { list-style: none; padding: 0; margin: 0; flex-grow: 1; overflow-y: auto; max-height: calc(100vh - 150px); }
+        .nav-links::-webkit-scrollbar { width: 4px; }
+        .nav-links::-webkit-scrollbar-thumb { background: #212533; border-radius: 4px; }
+        .nav-links li { margin-bottom: 6px; }
+        .nav-links a { display: flex; align-items: center; gap: 10px; padding: 10px 12px; color: #9ca3af; text-decoration: none; border-radius: 8px; font-size: 13px; transition: 0.2s; }
         .nav-links a:hover, .nav-links a.active { background: rgba(99, 102, 241, 0.15); color: #6366f1; }
-        .logout-btn { color: #ef4444; text-decoration: none; font-weight: bold; font-size: 14px; padding: 10px; display: block; background: rgba(239,68,68,0.1); border-radius: 8px; text-align: center; }
+        
+        .logout-btn { color: #ef4444; text-decoration: none; font-weight: bold; font-size: 14px; padding: 10px; display: block; background: rgba(239,68,68,0.1); border-radius: 8px; text-align: center; margin-top: 10px; }
         .container { padding: 20px; max-width: 800px; margin: 0 auto; }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 20px; }
         .stat-card { background: #161922; border: 1px solid #212533; padding: 20px; border-radius: 14px; }
@@ -104,20 +111,36 @@ $pending_pay = $pdo->query("SELECT COUNT(*) FROM pending_payments WHERE status =
         <div class="header-left"><button class="menu-btn" onclick="toggleSidebar()">☰</button><h1>BABA PANEL</h1></div>
         <div>👤 <?= htmlspecialchars($_SESSION['admin_user']) ?></div>
     </div>
+    
     <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+    
     <div class="sidebar" id="sidebar">
         <div class="sidebar-brand"><span>👑</span><div><h3>BABA PANEL</h3><p style="margin:2px 0 0;font-size:11px;color:#6366f1;">Master Admin</p></div></div>
+        
         <ul class="nav-links">
             <li><a href="index.php" class="active">📊 Dashboard</a></li>
-            <li><a href="features.php">⚙️ Bot & All Features Settings</a></li>
+            <li><a href="settings.php">⚙️ 1. Bot Token Control</a></li>
+            <li><a href="settings.php">💬 2. Welcome Message</a></li>
+            <li><a href="plans.php">📦 3. Plans & Pricing</a></li>
+            <li><a href="plans.php">🎥 4. Demo Videos / Files</a></li>
+            <li><a href="payment.php">💳 5. UPI ID Setup</a></li>
+            <li><a href="payment.php">🖼️ 6. QR Code Upload</a></li>
+            <li><a href="pending.php">⏳ 7. Pending Approvals <span style="background:#ef4444; color:#fff; font-size:10px; padding:2px 6px; border-radius:10px; margin-left:auto;"><?= $pending_pay ?></span></a></li>
+            <li><a href="users.php">👥 8. Bot Users List</a></li>
+            <li><a href="users.php">🆔 9. User IDs Viewer</a></li>
+            <li><a href="settings.php">📢 10. Join Log Channels</a></li>
+            <li><a href="settings.php">💸 11. Payment Channels</a></li>
+            <li><a href="settings.php">🎨 12. Bot Theme Style</a></li>
+            <li><a href="settings.php">🔄 13. Backup & Restore</a></li>
         </ul>
+        
         <a href="index.php?logout=true" class="logout-btn">🚪 Logout</a>
     </div>
 
     <div class="container">
         <div class="stats-grid">
             <div class="stat-card"><h3>Total Bot Users</h3><p><?= $total_users ?></p></div>
-            <div class="stat-card"><h3>Active Plans</h3><p><?= $total_plans ?></p></div>
+            <div class="stat-card"><h3>Active Plans</h3><p><?= $total_plans_count ?></p></div>
             <div class="stat-card"><h3>Pending Payments</h3><p style="color:#f59e0b;"><?= $pending_pay ?></p></div>
         </div>
 
