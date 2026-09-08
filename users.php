@@ -1,51 +1,29 @@
 <?php
 define('BABA_PANEL', true);
 require_once 'config.php';
-requireLogin();
-$page_title = 'Users';
-
-$users = $pdo->query("SELECT * FROM users ORDER BY id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
-
-require_once 'includes/header.php';
+if (!isset($_SESSION['admin_logged'])) { header("Location: index.php"); exit; }
+$admin_id = $_SESSION['admin_id'];
+$users = $pdo->prepare("SELECT DISTINCT user_id FROM pending_payments WHERE admin_id = ?");
+$users->execute([$admin_id]);
+$all_users = $users->fetchAll(PDO::FETCH_ASSOC);
 ?>
-
-<div class="card">
-    <h3 style="margin-bottom:15px;">👥 All Users (<?= count($users) ?>)</h3>
-    
-    <?php if (empty($users)): ?>
-        <p style="color:#64748b;">No users yet. Users will appear here when they purchase plans through the bot.</p>
-    <?php else: ?>
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Telegram ID</th>
-                    <th>Username</th>
-                    <th>Plan</th>
-                    <th>Expiry</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($users as $u): ?>
-                <tr>
-                    <td>#<?= $u['id'] ?></td>
-                    <td><?= htmlspecialchars($u['telegram_id']) ?></td>
-                    <td>@<?= htmlspecialchars($u['username'] ?: 'N/A') ?></td>
-                    <td><?= htmlspecialchars($u['plan']) ?></td>
-                    <td><?= $u['expiry'] ?></td>
-                    <td>
-                        <?php if ($u['status']=='Active'): ?>
-                            <span class="badge badge-green">Active</span>
-                        <?php else: ?>
-                            <span class="badge badge-red"><?= $u['status'] ?></span>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php endif; ?>
-</div>
-
-<?php require_once 'includes/footer.php'; ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Users - BABA PANEL</title>
+    <style>
+        body { background-color: #0b0c10; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; }
+        .back { color: #6366f1; text-decoration: none; display: inline-block; margin-bottom: 15px; }
+        .card { background: #161922; border: 1px solid #212533; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <a href="index.php" class="back">← Back to Dashboard</a>
+    <h2>👥 Total Users</h2>
+    <?php if(empty($all_users)): ?><p style="color: #6b7280;">No users found.</p><?php endif; ?>
+    <?php foreach($all_users as $u): ?>
+    <div class="card">User ID: <strong><?= htmlspecialchars($u['user_id']) ?></strong></div>
+    <?php endforeach; ?>
+</body>
+</html>
