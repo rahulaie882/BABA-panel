@@ -2,7 +2,6 @@
 define('BABA_PANEL', true);
 require_once 'config.php';
 
-// टेलीग्राम से आने वाले JSON डेटा को पढ़ें
 $content = file_get_contents("php://input");
 $update = json_decode($content, true);
 
@@ -10,58 +9,25 @@ if (!$update) {
     exit;
 }
 
-// यूजर का मैसेज या चैट आईडी निकालें
-$chat_id = $update['message']['chat']['id'] ?? $update['callback_query']['message']['chat']['id'] ?? null;
-$text = $update['message']['text'] ?? '';
-$username = $update['message']['from']['username'] ?? '';
-$first_name = $update['message']['from']['first_name'] ?? 'User';
-
-if (!$chat_id) {
-    exit;
-}
-
-// बॉट टोकन डेटाबेस से लाएं
 $bot_token = getSetting('bot_token');
-if (!$bot_token) {
-    exit;
-}
 
-// अगर यूजर ने /start भेजा है
-if ($text === '/start') {
-    $welcome_msg = "👋 Hello <b>{$first_name}</b>!\n\nWelcome to our premium service bot.\n\nChoose an option below to get started:";
+if (isset($update['message']['photo'])) {
+    $chat_id = $update['message']['chat']['id'];
+    $username = $update['message']['from']['username'] ?? 'unknown';
     
-    // कीबोर्ड बटन बनाएं
-    $keyboard = [
-        'inline_keyboard' => [
-            [['text' => '🛍️ Buy Products / Plans', 'callback_data' => 'buy_plans']],
-            [['text' => '👤 My Profile', 'callback_data' => 'my_profile']],
-            [['text' => '📞 Support', 'url' => 'https://t.me/' . getSetting('chat_id')]] // एडमिन चैट या सपोर्ट लिंक
-        ]
-    ];
-    
-    sendTelegramMessage($bot_token, $chat_id, $welcome_msg, $keyboard);
-}
+    $photos = $update['message']['photo'];
+    $file_id = end($photos)['file_id'];
 
-// टेलीग्राम पर मैसेज भेजने का फंक्शन
-function sendTelegramMessage($token, $chat_id, $message, $keyboard = null) {
-    $url = "https://api.telegram.org/bot{$token}/sendMessage";
-    $data = [
-        'chat_id' => $chat_id,
-        'text' => $message,
-        'parse_mode' => 'HTML'
-    ];
-    if ($keyboard) {
-        $data['reply_markup'] = json_encode($keyboard);
+    $file_info_json = @file_get_contents("https://api.telegram.org/bot{$bot_token}/getFile?file_id={$file_id}");
+    $file_info = json_decode($file_info_json, true);
+
+    if (isset($file_info['result']['file_path'])) {
+        $file_path = $file_info['result']['file_path'];
+
+        $stmt = $pdo->prepare("INSERT INTO pending_payments (user_id, username, plan_name, screenshot, status) VALUES (?, ?, ?, ?, 'pending')");
+        $stmt->execute([$chat_id, $username, 'VIP Subscription', $file_path]);
+
+        $msg = "⏳ Your payment screenshot has been received and sent for verification. Please wait!";
+        @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode($msg));
     }
-    
-    $options = [
-        'http' => [
-            'header' => "Content-type: application/x-www-form-urlencoded\r\n",
-            'method' => 'POST',
-            'content' => http_build_query($data)
-        ]
-    ];
-    $context = stream_context_create($options);
-    @file_get_contents($url, false, $context);
 }
-?>
