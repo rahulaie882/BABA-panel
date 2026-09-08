@@ -11,20 +11,20 @@ if (!$update) {
 
 $bot_token = getSetting('bot_token');
 $upi_id = getSetting('upi_id');
-$log_channel = getSetting('log_channel'); // नए यूजर के लॉग के लिए चैनल
-$proof_channel = getSetting('proof_channel'); // अप्रूव्ड इनवॉइस और पेमेंट प्रूफ के लिए चैनल
+$log_channel = getSetting('user_log_channel'); // सेटिंग्स से यूजर लॉग चैनल
+$proof_channel = getSetting('proof_channel') ?: getSetting('chat_id'); // पेमेंट प्रूफ / इनवॉइस चैनल
 
-// 1. अगर यूजर ने टेक्स्ट मैसेज या कमांड भेजा है (/start या स्क्रीनशॉट)
+// 1. टेक्स्ट मैसेज या कमांड हैंडलर
 if (isset($update['message'])) {
     $message = $update['message'];
     $chat_id = $message['chat']['id'];
     $text = $message['text'] ?? '';
-    $username = $message['from']['username'] ?? 'No Username';
+    $username = $message['from']['username'] ?? 'NoUsername';
     $first_name = $message['from']['first_name'] ?? 'User';
 
-    // /start कमांड हैंडलर + न्यू यूजर लॉगिंग
+    // /start कमांड
     if ($text === '/start') {
-        // नए यूजर की डिटेल लॉग चैनल पर भेजना
+        // यूजर की डिटेल लॉग चैनल में भेजना
         if (!empty($log_channel)) {
             $log_msg = "🔔 *New User Started Bot!*\n\n";
             $log_msg .= "👤 Name: {$first_name}\n";
@@ -34,9 +34,20 @@ if (isset($update['message'])) {
             @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id=" . urlencode($log_channel) . "&text=" . urlencode($log_msg) . "&parse_mode=Markdown");
         }
 
-        // डेटाबेस (plans टेबल) से प्लान्स निकालना
+        // सेटिंग्स से Start Media वीडियो भेजना (अगर एडमिन ने सेट किया है)
+        $start_videos = getSetting('start_videos');
+        if (!empty($start_videos)) {
+            $v_lines = explode("\n", trim($start_videos));
+            foreach ($v_lines as $vid) {
+                $vid = trim($vid);
+                if (!empty($vid)) {
+                    @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendVideo?chat_id={$chat_id}&video=" . urlencode($vid));
+                }
+            }
+        }
+
+        // प्लान्स फेच करना
         $plans = $pdo->query("SELECT * FROM plans")->fetchAll(PDO::FETCH_ASSOC);
-        
         $keyboard = [];
         foreach ($plans as $p) {
             $keyboard[] = [[
@@ -45,18 +56,16 @@ if (isset($update['message'])) {
             ]];
         }
 
+        // "How to Use" बटन जोड़ना अगर सेट है
+        $keyboard[] = [['text' => '❓ How to Use', 'callback_data' => 'how_to_use']];
         $reply_markup = json_encode(['inline_keyboard' => $keyboard]);
 
-        // वेलकम मैसेज भेजना
-        $welcome_msg = "👋 *Welcome to " . getSetting('panel_name') . ", {$first_name}!*\n\nGet access to our exclusive content and VIP channels. Choose a plan below to get started:";
-        @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode($welcome_msg) . "&reply_markup=" . urlencode($reply_markup) . "&parse_mode=Markdown");
-
-        // 5 डेमो वीडियो / प्रिव्यू भेजना
-        $demo_text = "🎥 Here are your 5 Demo Videos/Previews:";
-        @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode($demo_text));
+        // वेलकम कैप्शन भेजना
+        $welcome_caption = getSetting('start_caption') ?: "👋 *Welcome to " . getSetting('panel_name') . ", {$first_name}!*\n\nChoose a plan below:";
+        @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode($welcome_caption) . "&reply_markup=" . urlencode($reply_markup) . "&parse_mode=Markdown");
     }
 
-    // अगर यूजर पेमेंट का स्क्रीनशॉट भेज रहा है
+    // पेमेंट स्क्रीनशॉट हैंडलर
     if (isset($message['photo'])) {
         $stmt = $pdo->prepare("SELECT * FROM users_state WHERE user_id = ? AND state = 'waiting_screenshot'");
         $stmt->execute([$chat_id]);
@@ -64,7 +73,6 @@ if (isset($update['message'])) {
 
         if ($state_data) {
             $plan_id = $state_data['selected_plan'];
-            
             $p_stmt = $pdo->prepare("SELECT * FROM plans WHERE id = ?");
             $p_stmt->execute([$plan_id]);
             $plan = $p_stmt->fetch(PDO::FETCH_ASSOC);
@@ -79,12 +87,11 @@ if (isset($update['message'])) {
                 if (isset($file_info['result']['file_path'])) {
                     $file_path = $file_info['result']['file_path'];
 
-                    // पेंडिंग पेमेंट डेटाबेस में सेव करना
+                    // डेटाबेस में पेंडिंग पेमेंट सेव करना
                     ins_pending($chat_id, $username, $plan['name'], $plan['price'], $file_path);
-
                     $pdo->prepare("DELETE FROM users_state WHERE user_id = ?")->execute([$chat_id]);
 
-                    $msg = "⏳ Your payment screenshot for *{$plan['name']}* has been received! Please wait while admin verifies it.";
+                    $msg = "⏳ Payment screenshot received for *{$plan['name']}*! Please wait while admin verifies it.";
                     @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode($msg) . "&parse_mode=Markdown");
                 }
             }
@@ -93,29 +100,37 @@ if (isset($update['message'])) {
     }
 }
 
-// 2. इनलाइन बटन क्लिक हैंडलर (Plans और Payment)
+// 2. इनलाइन बटन क्लिक्स
 if (isset($update['callback_query'])) {
     $callback = $update['callback_query'];
     $chat_id = $callback['message']['chat']['id'];
     $data = $callback['data'];
 
-    // जब यूजर किसी प्लान पर क्लिक करे
+    if ($data === 'how_to_use') {
+        $how_video = getSetting('how_to_video');
+        $how_caption = getSetting('how_to_caption') ?: "📖 *How to Purchase Guide:* Watch the video above to learn how to buy plans.";
+        
+        if (!empty($how_video)) {
+            @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendVideo?chat_id={$chat_id}&video=" . urlencode($how_video) . "&caption=" . urlencode($how_caption) . "&parse_mode=Markdown");
+        } else {
+            @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode($how_caption) . "&parse_mode=Markdown");
+        }
+    }
+
     if (strpos($data, 'plan_') === 0) {
         $plan_id = str_replace('plan_', '', $data);
-
         $stmt = $pdo->prepare("SELECT * FROM plans WHERE id = ?");
         $stmt->execute([$plan_id]);
         $plan = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($plan) {
-            // यूजर का स्टेट सेव करें ताकि स्क्रीनशॉट ट्रैक हो सके
             $pdo->prepare("INSERT OR REPLACE INTO users_state (user_id, state, selected_plan) VALUES (?, 'waiting_screenshot', ?)")
                 ->execute([$chat_id, $plan_id]);
 
-            // अगर प्लान में वीडियो फाइल IDs डली हैं, तो पहले वो वीडियो भेजें
+            // अगर प्लान के साथ डेमो वीडियो अटैच हैं
             if (!empty($plan['video_ids'])) {
-                $video_lines = explode("\n", trim($plan['video_ids']));
-                foreach ($video_lines as $vid) {
+                $v_lines = explode("\n", trim($plan['video_ids']));
+                foreach ($v_lines as $vid) {
                     $vid = trim($vid);
                     if (!empty($vid)) {
                         @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendVideo?chat_id={$chat_id}&video=" . urlencode($vid));
@@ -123,18 +138,15 @@ if (isset($update['callback_query'])) {
                 }
             }
 
-            // UPI QR Code जनरेट करना (अमाउंट के साथ)
-            $upi_url = "upi://pay?pa={$upi_id}&pn=BabaPanel&am={$plan['price']}&cu=INR";
+            $upi_url = "upi://pay?pa={$upi_id}&pn=WangPanel&am={$plan['price']}&cu=INR";
             $qr_api = "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=" . urlencode($upi_url);
 
             $caption = "💎 *Plan:* {$plan['name']}\n";
             $caption .= "💰 *Price:* ₹{$plan['price']}\n";
             $caption .= "⏳ *Validity:* {$plan['validity']} Days\n\n";
             $caption .= "📝 *Details:* {$plan['caption']}\n\n";
-            $caption .= "⚡ *Scan the QR Code above to pay via any UPI App.*\n";
-            $caption .= "*(UPI ID: `{$upi_id}`)*";
+            $caption .= "⚡ *Scan QR Code above to pay via any UPI App.*\n*(UPI ID: `{$upi_id}`)*";
 
-            // QR के नीचे "I Have Paid" और "Back" बटन
             $keyboard = json_encode([
                 'inline_keyboard' => [
                     [['text' => '✅ I Have Paid (Send Screenshot)', 'callback_data' => 'paid_' . $plan_id]],
@@ -146,25 +158,22 @@ if (isset($update['callback_query'])) {
         }
     }
 
-    // जब यूजर "I Have Paid" बटन दबाए
     if (strpos($data, 'paid_') === 0) {
-        $msg = "📸 Please send the screenshot of your payment right here in the chat. Our system is waiting for your proof!";
-        @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode($msg));
+        @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode("📸 Please send your payment screenshot right here in chat."));
     }
 
-    // होम मेनू पर वापस जाने के लिए
     if ($data === 'back_home') {
         $plans = $pdo->query("SELECT * FROM plans")->fetchAll(PDO::FETCH_ASSOC);
         $keyboard = [];
         foreach ($plans as $p) {
             $keyboard[] = [['text' => "📦 {$p['name']} - ₹{$p['price']}", 'callback_data' => "plan_" . $p['id']]];
         }
+        $keyboard[] = [['text' => '❓ How to Use', 'callback_data' => 'how_to_use']];
         $reply_markup = json_encode(['inline_keyboard' => $keyboard]);
         @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode("Please select a plan:") . "&reply_markup=" . urlencode($reply_markup));
     }
 }
 
-// पेंडिंग पेमेंट डेटाबेस में सेव करने का फंक्शन
 function ins_pending($user_id, $username, $plan_name, $amount, $screenshot) {
     global $pdo;
     try {
