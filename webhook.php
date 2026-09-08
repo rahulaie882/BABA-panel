@@ -11,9 +11,10 @@ if (!$update) {
 
 $bot_token = getSetting('bot_token');
 $upi_id = getSetting('upi_id');
-$log_channel = getSetting('log_channel'); // नए यूजर के लिए लॉग चैनल
+$log_channel = getSetting('log_channel'); // नए यूजर के लॉग के लिए चैनल
+$proof_channel = getSetting('proof_channel'); // अप्रूव्ड इनवॉइस और पेमेंट प्रूफ के लिए चैनल
 
-// 1. अगर यूजर ने मैसेज या कमांड भेजा है
+// 1. अगर यूजर ने टेक्स्ट मैसेज या कमांड भेजा है (/start या स्क्रीनशॉट)
 if (isset($update['message'])) {
     $message = $update['message'];
     $chat_id = $message['chat']['id'];
@@ -23,6 +24,7 @@ if (isset($update['message'])) {
 
     // /start कमांड हैंडलर + न्यू यूजर लॉगिंग
     if ($text === '/start') {
+        // नए यूजर की डिटेल लॉग चैनल पर भेजना
         if (!empty($log_channel)) {
             $log_msg = "🔔 *New User Started Bot!*\n\n";
             $log_msg .= "👤 Name: {$first_name}\n";
@@ -32,7 +34,7 @@ if (isset($update['message'])) {
             @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id=" . urlencode($log_channel) . "&text=" . urlencode($log_msg) . "&parse_mode=Markdown");
         }
 
-        // डेटाबेस से प्लान्स फेच करें
+        // डेटाबेस (plans टेबल) से प्लान्स निकालना
         $plans = $pdo->query("SELECT * FROM plans")->fetchAll(PDO::FETCH_ASSOC);
         
         $keyboard = [];
@@ -45,12 +47,11 @@ if (isset($update['message'])) {
 
         $reply_markup = json_encode(['inline_keyboard' => $keyboard]);
 
-        $welcome_msg = "👋 *Welcome to Baba Bot, {$first_name}!*\n\nGet access to our exclusive content and VIP channels. Choose a plan below to get started:";
-        
-        // वेलकम मैसेज भेजें
+        // वेलकम मैसेज भेजना
+        $welcome_msg = "👋 *Welcome to " . getSetting('panel_name') . ", {$first_name}!*\n\nGet access to our exclusive content and VIP channels. Choose a plan below to get started:";
         @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode($welcome_msg) . "&reply_markup=" . urlencode($reply_markup) . "&parse_mode=Markdown");
 
-        // 5 डेमो वीडियो/प्रिव्यू का संदेश
+        // 5 डेमो वीडियो / प्रिव्यू भेजना
         $demo_text = "🎥 Here are your 5 Demo Videos/Previews:";
         @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode($demo_text));
     }
@@ -78,7 +79,7 @@ if (isset($update['message'])) {
                 if (isset($file_info['result']['file_path'])) {
                     $file_path = $file_info['result']['file_path'];
 
-                    // डेटाबेस में प्लान नेम और अमाउंट के साथ सेव करें
+                    // पेंडिंग पेमेंट डेटाबेस में सेव करना
                     ins_pending($chat_id, $username, $plan['name'], $plan['price'], $file_path);
 
                     $pdo->prepare("DELETE FROM users_state WHERE user_id = ?")->execute([$chat_id]);
@@ -98,6 +99,7 @@ if (isset($update['callback_query'])) {
     $chat_id = $callback['message']['chat']['id'];
     $data = $callback['data'];
 
+    // जब यूजर किसी प्लान पर क्लिक करे
     if (strpos($data, 'plan_') === 0) {
         $plan_id = str_replace('plan_', '', $data);
 
@@ -106,9 +108,22 @@ if (isset($update['callback_query'])) {
         $plan = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($plan) {
+            // यूजर का स्टेट सेव करें ताकि स्क्रीनशॉट ट्रैक हो सके
             $pdo->prepare("INSERT OR REPLACE INTO users_state (user_id, state, selected_plan) VALUES (?, 'waiting_screenshot', ?)")
                 ->execute([$chat_id, $plan_id]);
 
+            // अगर प्लान में वीडियो फाइल IDs डली हैं, तो पहले वो वीडियो भेजें
+            if (!empty($plan['video_ids'])) {
+                $video_lines = explode("\n", trim($plan['video_ids']));
+                foreach ($video_lines as $vid) {
+                    $vid = trim($vid);
+                    if (!empty($vid)) {
+                        @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendVideo?chat_id={$chat_id}&video=" . urlencode($vid));
+                    }
+                }
+            }
+
+            // UPI QR Code जनरेट करना (अमाउंट के साथ)
             $upi_url = "upi://pay?pa={$upi_id}&pn=BabaPanel&am={$plan['price']}&cu=INR";
             $qr_api = "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=" . urlencode($upi_url);
 
@@ -116,9 +131,10 @@ if (isset($update['callback_query'])) {
             $caption .= "💰 *Price:* ₹{$plan['price']}\n";
             $caption .= "⏳ *Validity:* {$plan['validity']} Days\n\n";
             $caption .= "📝 *Details:* {$plan['caption']}\n\n";
-            $caption .= "⚡ *Scan QR Code above to pay via any UPI App.*\n";
+            $caption .= "⚡ *Scan the QR Code above to pay via any UPI App.*\n";
             $caption .= "*(UPI ID: `{$upi_id}`)*";
 
+            // QR के नीचे "I Have Paid" और "Back" बटन
             $keyboard = json_encode([
                 'inline_keyboard' => [
                     [['text' => '✅ I Have Paid (Send Screenshot)', 'callback_data' => 'paid_' . $plan_id]],
@@ -130,11 +146,13 @@ if (isset($update['callback_query'])) {
         }
     }
 
+    // जब यूजर "I Have Paid" बटन दबाए
     if (strpos($data, 'paid_') === 0) {
-        $msg = "📸 Please send the screenshot of your payment right here in the chat.";
+        $msg = "📸 Please send the screenshot of your payment right here in the chat. Our system is waiting for your proof!";
         @file_get_contents("https://api.telegram.org/bot{$bot_token}/sendMessage?chat_id={$chat_id}&text=" . urlencode($msg));
     }
 
+    // होम मेनू पर वापस जाने के लिए
     if ($data === 'back_home') {
         $plans = $pdo->query("SELECT * FROM plans")->fetchAll(PDO::FETCH_ASSOC);
         $keyboard = [];
@@ -146,10 +164,11 @@ if (isset($update['callback_query'])) {
     }
 }
 
+// पेंडिंग पेमेंट डेटाबेस में सेव करने का फंक्शन
 function ins_pending($user_id, $username, $plan_name, $amount, $screenshot) {
     global $pdo;
     try {
-        $pdo->exec("CREATE TABLE IF NOT EXISTS pending_payments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, username TEXT, plan_name TEXT, amount TEXT, screenshot TEXT, status TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS pending_payments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, username TEXT, plan_name TEXT, amount REAL, screenshot TEXT, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
         $pdo->exec("CREATE TABLE IF NOT EXISTS users_state (user_id TEXT PRIMARY KEY, state TEXT, selected_plan TEXT)");
     } catch(Exception $e) {}
 
