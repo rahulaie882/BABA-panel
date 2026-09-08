@@ -10,6 +10,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         setSetting('chat_id', trim($_POST['chat_id'] ?? ''));
         $success = "Bot configuration saved!";
     }
+    if (isset($_POST['set_webhook'])) {
+        $bot_token = getSetting('bot_token');
+        if (!empty($bot_token)) {
+            $domain = $_SERVER['HTTP_HOST'];
+            $webhook_url = "https://api.telegram.org/bot" . $bot_token . "/setWebhook?url=https://" . $domain . "/webhook.php";
+            $response = @file_get_contents($webhook_url);
+            $result = json_decode($response, true);
+            
+            if ($result && isset($result['ok']) && $result['ok']) {
+                $success = "Telegram Webhook successfully set!";
+            } else {
+                $error = "Failed to set webhook. Check your Bot Token.";
+            }
+        } else {
+            $error = "Please save your Bot Token first before setting the webhook.";
+        }
+    }
     if (isset($_POST['save_theme'])) {
         $primary = trim($_POST['primary_color'] ?? '#3b82f6');
         $secondary = trim($_POST['secondary_color'] ?? '#8b5cf6');
@@ -78,10 +95,13 @@ require_once 'includes/header.php';
 
 <div class="card">
     <h3 style="margin-bottom:15px;">🔗 Webhook</h3>
-    <p style="color:#64748b;margin-bottom:10px;">Status: <span class="badge badge-yellow">Not Set</span></p>
-    <p style="font-size:13px;color:#64748b;word-break:break-all;">
+    <p style="color:#64748b;margin-bottom:10px;">Status: <span class="badge badge-yellow">Ready</span></p>
+    <p style="font-size:13px;color:#64748b;word-break:break-all;margin-bottom:15px;">
         Webhook URL: https://api.telegram.org/bot<?= $bot_token ? substr($bot_token,0,20).'...' : 'YOUR_TOKEN' ?>/setWebhook
     </p>
+    <form method="POST">
+        <button type="submit" name="set_webhook" class="btn btn-primary" style="background:linear-gradient(90deg, #3b82f6, #8b5cf6);">🚀 Set Webhook Now</button>
+    </form>
 </div>
 
 <div class="card">
