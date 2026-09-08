@@ -22,27 +22,27 @@ $pending_list = $pdo->query("SELECT * FROM pending_payments WHERE status = 'pend
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pending Payments - BABA PANEL</title>
+    <title>Pending Approvals - BABA PANEL</title>
     <style>
-        * { box-sizing: border-box; }
-        body { background-color: #0b0c10; color: #fff; font-family: sans-serif; margin: 0; padding: 0; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #0b0c10; color: #fff; font-family: sans-serif; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #12141d; padding: 15px 20px; border-bottom: 1px solid #1f2330; }
         .container { padding: 20px; max-width: 600px; margin: 0 auto; }
         .card { background: #161922; border: 1px solid #212533; border-radius: 14px; padding: 20px; margin-bottom: 20px; }
         button { padding: 10px; border: none; color: #fff; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; }
-        .alert-success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; padding: 10px; border-radius: 8px; margin-bottom: 15px; text-align: center; font-size: 13px; }
+        .alert { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; padding: 10px; border-radius: 8px; margin-bottom: 15px; text-align: center; font-size: 13px; }
         .item-box { background: #0f1117; border: 1px solid #212533; padding: 15px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
         .back-link { display: inline-block; color: #6366f1; text-decoration: none; margin-bottom: 15px; font-size: 14px; }
     </style>
 </head>
 <body>
-    <div class="header"><h1>⏳ Pending Payment Approvals</h1><div>👤 <?= htmlspecialchars($_SESSION['admin_user']) ?></div></div>
+    <div class="header"><h1>⏳ Pending Payment Control</h1><div>👤 <?= htmlspecialchars($_SESSION['admin_user']) ?></div></div>
     <div class="container">
         <a href="dashboard.php" class="back-link">← Back to Dashboard</a>
-        <?php if($success): ?><div class="alert-success"><?= $success ?></div><?php endif; ?>
+        <?php if($success): ?><div class="alert"><?= $success ?></div><?php endif; ?>
         <div class="card">
             <?php if(empty($pending_list)): ?>
-                <p style="color:#9ca3af; font-size:13px; text-align:center; margin:10px 0;">No pending payments right now.</p>
+                <p style="color:#9ca3af; font-size:13px; text-align:center; margin:10px 0;">No pending payments to review.</p>
             <?php endif; ?>
             <?php foreach($pending_list as $pay): ?>
             <div class="item-box">
