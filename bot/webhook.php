@@ -1,7 +1,7 @@
 <?php
 /**
  * BABA PANEL - Telegram Bot Webhook
- * Version 2.0 Final
+ * Version 2.1 Finalized
  */
 
 require_once __DIR__ . '/../config.php';
@@ -17,7 +17,6 @@ if (!$update) {
 
 // ========== LICENSE CHECK ==========
 if (!isLicenseValid()) {
-    // License expired - bot stops working
     if (isset($update['message']['chat']['id'])) {
         $chat_id = $update['message']['chat']['id'];
         telegramApi('sendMessage', [
@@ -62,6 +61,14 @@ function sendPhoto($chat_id, $file_id_or_url, $caption = '', $keyboard = null) {
     ];
     if ($keyboard) $params['reply_markup'] = json_encode($keyboard);
     return telegramApi('sendPhoto', $params);
+}
+
+function sendMediaGroup($chat_id, $media_array) {
+    $params = [
+        'chat_id' => $chat_id,
+        'media' => json_encode($media_array)
+    ];
+    return telegramApi('sendMediaGroup', $params);
 }
 
 function answerCallback($callback_id, $text = '') {
@@ -115,8 +122,28 @@ if (isset($update['callback_query'])) {
             exit;
         }
 
+        // 1. Send Demo Videos as Media Group (Album) if available
+        if (!empty(trim($plan['demo_videos']))) {
+            $lines = array_filter(array_map('trim', explode("\n", $plan['demo_videos'])));
+            if (!empty($lines)) {
+                $media_group = [];
+                $i = 0;
+                foreach ($lines as $vid) {
+                    $media_group[] = [
+                        'type' => 'video',
+                        'media' => $vid,
+                        'caption' => ($i === 0) ? "🎬 *Demo Videos for {$plan['name']}*" : '',
+                        'parse_mode' => 'Markdown'
+                    ];
+                    $i++;
+                    if (count($media_group) >= 10) break; // Telegram limit per album is 10
+                }
+                sendMediaGroup($chat_id, $media_group);
+            }
+        }
+
         $upi = getSetting('upi_id') ?: 'Not set';
-        $qr  = getSetting('qr_image');
+        $qr  = trim($plan['qr_code']); // Plan specific QR
 
         $text = "🛒 *Selected Plan*\n\n";
         $text .= "📦 *{$plan['name']}*\n";
@@ -126,33 +153,26 @@ if (isset($update['callback_query'])) {
         $text .= "━━━━━━━━━━━━━━━\n";
         $text .= "💳 *Payment Details*\n";
         $text .= "UPI: `{$upi}`\n\n";
-        $text .= "1️⃣ UPI pe payment karo\n";
-        $text .= "2️⃣ Payment ka screenshot bhejo\n";
-        $text .= "3️⃣ Admin approve karega";
+        $text .= "1️⃣ Scan QR & Pay ₹" . number_format($plan['price']) . "\n";
+        $text .= "2️⃣ Click 'I Have Paid' & send Screenshot";
 
         $keyboard = [
             'inline_keyboard' => [
-                [['text' => '✅ I have paid – Send Screenshot', 'callback_data' => 'paid_' . $plan_id]],
+                [['text' => '✅ I Have Paid – Send Screenshot', 'callback_data' => 'paid_' . $plan_id]],
                 [['text' => '« Back to Plans', 'callback_data' => 'show_plans']]
             ]
         ];
 
-        // Send QR if available
-        if ($qr && file_exists(UPLOAD_DIR . $qr)) {
-            // For shared hosting we send as URL if possible, else just text
-            // Better: upload QR to Telegram once and store file_id (future improvement)
-            sendMsg($chat_id, $text, $keyboard);
-            sendMsg($chat_id, "📷 *Scan QR to Pay*\n\nUPI: `{$upi}`");
+        // Send Plan QR Code (Photo or URL or File ID)
+        if (!empty($qr)) {
+            sendPhoto($chat_id, $qr, $text, $keyboard);
         } else {
             sendMsg($chat_id, $text, $keyboard);
         }
     }
     elseif (strpos($data, 'paid_') === 0) {
         $plan_id = intval(str_replace('paid_', '', $data));
-        // Mark that user is about to send screenshot
-        // We'll handle photo in message handler with context (simple way: just tell them to send photo)
-        sendMsg($chat_id, "📤 Ab apna *payment screenshot* bhejo (photo).\n\nScreenshot aate hi admin ko chala jayega.");
-        // Store temporary state (simple file based or we can use a temp table)
+        sendMsg($chat_id, "📤 Ab apna *payment screenshot* (photo) yahan bhejo.\n\nScreenshot bhejte hi request admin ke paas chali jayegi.");
         file_put_contents(sys_get_temp_dir() . "/baba_pending_{$user_id}.txt", $plan_id);
     }
 
@@ -169,8 +189,7 @@ if (isset($update['message'])) {
     $full_name = trim(($msg['from']['first_name'] ?? '') . ' ' . ($msg['from']['last_name'] ?? ''));
     $text = $msg['text'] ?? '';
 
-    // ===== FILE ID FEATURE =====
-    // Agar admin video/photo bheje toh file_id return karo
+    // ===== FILE ID FEATURE (For Admin) =====
     $admin_id = getSetting('admin_chat_id');
     if ($admin_id && (string)$user_id === (string)$admin_id) {
         if (isset($msg['video'])) {
@@ -182,7 +201,7 @@ if (isset($update['message'])) {
         if (isset($msg['photo'])) {
             $photos = $msg['photo'];
             $fid = end($photos)['file_id'];
-            sendMsg($chat_id, "✅ *Photo File ID:*\n\n`{$fid}`");
+            sendMsg($chat_id, "✅ *Photo/QR File ID:*\n\n`{$fid}`");
             http_response_code(200);
             exit;
         }
@@ -224,7 +243,6 @@ if (isset($update['message'])) {
         // Send Start Video + Welcome
         $start_video = getSetting('start_video_file_id');
         $welcome = getSetting('welcome_message') ?: "Welcome!\n\nChoose a plan below:";
-
         $keyboard = getPlansKeyboard();
 
         if ($start_video) {
@@ -250,7 +268,7 @@ if (isset($update['message'])) {
         $file_id = end($photos)['file_id']; // highest quality
 
         // Get plan info
-        $plan_name = 'Unknown';
+        $plan_name = 'Unknown Plan';
         $amount = 0;
         if ($plan_id) {
             $stmt = $pdo->prepare("SELECT * FROM plans WHERE id = ?");
@@ -262,23 +280,34 @@ if (isset($update['message'])) {
             }
         }
 
-        // Save to pending
+        // Save to pending payments DB
         $pdo->prepare("INSERT INTO pending_payments (user_id, username, full_name, plan_id, plan_name, amount, screenshot, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')")
             ->execute([$user_id, $username, $full_name, $plan_id, $plan_name, $amount, $file_id]);
 
-        // Notify Admin
+        $payment_db_id = $pdo->lastInsertId();
+
+        // Notify Admin with Approve / Reject Buttons
         $admin = getSetting('admin_chat_id');
         if ($admin) {
-            $notify = "💳 *New Payment Screenshot*\n\n";
-            $notify .= "User: *{$full_name}*\n";
-            $notify .= "Username: @" . ($username ?: 'N/A') . "\n";
-            $notify .= "ID: `{$user_id}`\n";
-            $notify .= "Plan: *{$plan_name}*\n";
-            $notify .= "Amount: *₹" . number_format($amount) . "*\n\n";
-            $notify .= "Panel se Approve / Reject karo.";
+            $notify = "💳 *New Payment Screenshot Received!*\n\n";
+            $notify .= "👤 User: *{$full_name}*\n";
+            $notify .= "🔗 Username: @" . ($username ?: 'N/A') . "\n";
+            $notify .= "🆔 ID: `{$user_id}`\n";
+            $notify .= "📦 Plan: *{$plan_name}*\n";
+            $notify .= "💰 Amount: *₹" . number_format($amount) . "*\n\n";
+            $notify .= "Neeche diye gaye buttons se action lein:";
 
-            sendPhoto($admin, $file_id, $notify);
+            $admin_keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => '✅ Approve', 'callback_data' => 'approve_' . $payment_db_id],
+                        ['text' => '❌ Reject', 'callback_data' => 'reject_' . $payment_db_id]
+                    ]
+                ]
+            ];
+
+            sendPhoto($admin, $file_id, $notify, $admin_keyboard);
         }
 
         // Also to payment proof channel
@@ -287,17 +316,22 @@ if (isset($update['message'])) {
             sendPhoto($proof_ch, $file_id, "Payment from {$full_name} (@{$username}) - {$plan_name} - ₹{$amount}");
         }
 
-        // Reply to user
-        $waiting_msg = "⏳ *Payment Received!*\n\nAapka screenshot aa gaya hai.\nAdmin check karke approve karega.\nThoda wait kariye.";
+        // Reply to user with waiting state
+        $waiting_msg = "⏳ *Payment Screenshot Received!*\n\nAapka screenshot successfully admin ke paas bhej diya gaya hai.\nKripya thoda wait karein, verification ke baad plan activate kar diya jayega.";
         sendMsg($chat_id, $waiting_msg);
 
         http_response_code(200);
         exit;
     }
 
-    // Default
+    // Default / Non-Start text handler (Clickable /start prompt)
     if ($text) {
-        sendMsg($chat_id, "Use /start to see plans.");
+        $start_keyboard = [
+            'inline_keyboard' => [
+                [['text' => '🚀 Click Here to Start Bot', 'callback_data' => 'show_plans']]
+            ]
+        ];
+        sendMsg($chat_id, "⚠️ Kripya bot ko use karne ke liye neeche diye gaye button par click karein ya /start bhejein:", $start_keyboard);
     }
 }
 
