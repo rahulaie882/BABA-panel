@@ -4,6 +4,14 @@ require_once 'config.php';
 requireLogin();
 $page_title = 'Plans';
 
+// Auto-add columns if missing (Fixes HTTP 500 error)
+try {
+    $pdo->exec("ALTER TABLE plans ADD COLUMN qr_code TEXT");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE plans ADD COLUMN demo_videos TEXT");
+} catch (Exception $e) {}
+
 $success = $error = '';
 $edit_plan = null;
 
@@ -47,7 +55,7 @@ if (isset($_GET['delete'])) {
     exit;
 }
 
-$plans = $pdo->query("SELECT * FROM plans ORDER BY sort_order ASC, id ASC")->fetchAll();
+$plans = $pdo->query("SELECT * FROM plans ORDER BY id ASC")->fetchAll();
 
 require_once 'includes/header.php';
 ?>
@@ -79,7 +87,7 @@ require_once 'includes/header.php';
                 <input type="number" name="validity" value="<?= $edit_plan['validity'] ?? 30 ?>" min="1" required>
             </div>
             <div>
-                <label>QR Code Image URL / Link *</label>
+                <label>QR Code Image (URL or File ID) *</label>
                 <input type="text" name="qr_code" value="<?= htmlspecialchars($edit_plan['qr_code'] ?? '') ?>" placeholder="Paste QR image link or Telegram File ID" required>
             </div>
         </div>
@@ -87,7 +95,7 @@ require_once 'includes/header.php';
         <label>Description</label>
         <textarea name="description" rows="2" placeholder="Short description about this plan..."><?= htmlspecialchars($edit_plan['description'] ?? '') ?></textarea>
 
-        <label>Demo Videos File IDs (Ek line mein ek ya comma separated daalein)</label>
+        <label>Demo Videos File IDs (Ek line mein ek)</label>
         <textarea name="demo_videos" rows="3" placeholder="BAACAgUAAxkBAAIC...&#10;BAACAgUAAxkBAAID..."><?= htmlspecialchars($edit_plan['demo_videos'] ?? '') ?></textarea>
 
         <div style="display:flex;gap:10px;margin-top:12px;">
@@ -124,8 +132,8 @@ require_once 'includes/header.php';
                     <td><?= money($p['price']) ?></td>
                     <td><?= $p['validity'] ?> days</td>
                     <td>
-                        <small style="color:#38bdf8;">QR: <?= $p['qr_code'] ? 'Set' : 'Not Set' ?></small><br>
-                        <small style="color:#a855f7;">Videos: <?= $p['demo_videos'] ? count(explode("\n", trim($p['demo_videos']))) : 0 ?></small>
+                        <small style="color:#38bdf8;">QR: <?= !empty($p['qr_code']) ? 'Set' : 'Not Set' ?></small><br>
+                        <small style="color:#a855f7;">Videos: <?= !empty($p['demo_videos']) ? count(explode("\n", trim($p['demo_videos']))) : 0 ?></small>
                     </td>
                     <td>
                         <a href="?edit=<?= $p['id'] ?>" class="btn btn-secondary btn-sm">Edit</a>
