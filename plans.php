@@ -20,16 +20,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $price = floatval($_POST['price'] ?? 0);
     $validity = intval($_POST['validity'] ?? 30);
     $description = trim($_POST['description'] ?? '');
+    $qr_code = trim($_POST['qr_code'] ?? '');
+    $demo_videos = trim($_POST['demo_videos'] ?? '');
     $id = intval($_POST['id'] ?? 0);
 
     if ($name && $price > 0) {
         if ($id > 0) {
-            $pdo->prepare("UPDATE plans SET name=?, price=?, validity=?, description=? WHERE id=?")
-                ->execute([$name, $price, $validity, $description, $id]);
+            $stmt = $pdo->prepare("UPDATE plans SET name=?, price=?, validity=?, description=?, qr_code=?, demo_videos=? WHERE id=?");
+            $stmt->execute([$name, $price, $validity, $description, $qr_code, $demo_videos, $id]);
             $success = "Plan updated successfully!";
         } else {
-            $pdo->prepare("INSERT INTO plans (name, price, validity, description) VALUES (?,?,?,?)")
-                ->execute([$name, $price, $validity, $description]);
+            $stmt = $pdo->prepare("INSERT INTO plans (name, price, validity, description, qr_code, demo_videos) VALUES (?,?,?,?,?,?)");
+            $stmt->execute([$name, $price, $validity, $description, $qr_code, $demo_videos]);
             $success = "Plan added successfully!";
         }
         $edit_plan = null;
@@ -77,15 +79,18 @@ require_once 'includes/header.php';
                 <input type="number" name="validity" value="<?= $edit_plan['validity'] ?? 30 ?>" min="1" required>
             </div>
             <div>
-                <label>Status</label>
-                <input type="text" value="Active" disabled style="opacity:0.6;">
+                <label>QR Code Image URL / Link *</label>
+                <input type="text" name="qr_code" value="<?= htmlspecialchars($edit_plan['qr_code'] ?? '') ?>" placeholder="Paste QR image link or Telegram File ID" required>
             </div>
         </div>
 
         <label>Description</label>
-        <textarea name="description" rows="3" placeholder="Short description about this plan..."><?= htmlspecialchars($edit_plan['description'] ?? '') ?></textarea>
+        <textarea name="description" rows="2" placeholder="Short description about this plan..."><?= htmlspecialchars($edit_plan['description'] ?? '') ?></textarea>
 
-        <div style="display:flex;gap:10px;margin-top:8px;">
+        <label>Demo Videos File IDs (Ek line mein ek ya comma separated daalein)</label>
+        <textarea name="demo_videos" rows="3" placeholder="BAACAgUAAxkBAAIC...&#10;BAACAgUAAxkBAAID..."><?= htmlspecialchars($edit_plan['demo_videos'] ?? '') ?></textarea>
+
+        <div style="display:flex;gap:10px;margin-top:12px;">
             <button type="submit" class="btn btn-primary"><?= $edit_plan ? '💾 Update Plan' : '+ Add Plan' ?></button>
             <?php if ($edit_plan): ?>
                 <a href="plans.php" class="btn btn-secondary">Cancel</a>
@@ -107,7 +112,7 @@ require_once 'includes/header.php';
                     <th>Name</th>
                     <th>Price</th>
                     <th>Validity</th>
-                    <th>Description</th>
+                    <th>Details</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -118,7 +123,10 @@ require_once 'includes/header.php';
                     <td><strong><?= htmlspecialchars($p['name']) ?></strong></td>
                     <td><?= money($p['price']) ?></td>
                     <td><?= $p['validity'] ?> days</td>
-                    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($p['description'] ?: '-') ?></td>
+                    <td>
+                        <small style="color:#38bdf8;">QR: <?= $p['qr_code'] ? 'Set' : 'Not Set' ?></small><br>
+                        <small style="color:#a855f7;">Videos: <?= $p['demo_videos'] ? count(explode("\n", trim($p['demo_videos']))) : 0 ?></small>
+                    </td>
                     <td>
                         <a href="?edit=<?= $p['id'] ?>" class="btn btn-secondary btn-sm">Edit</a>
                         <a href="?delete=<?= $p['id'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Delete this plan?')">Delete</a>
